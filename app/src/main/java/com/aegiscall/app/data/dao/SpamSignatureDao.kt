@@ -15,6 +15,9 @@ interface SpamSignatureDao {
     @Query("SELECT * FROM spam_signatures ORDER BY totalReports DESC LIMIT 100")
     fun getTopSpammers(): Flow<List<SpamSignatureEntity>>
 
+    @Query("SELECT * FROM spam_signatures WHERE patternOrNumber LIKE '%' || :query || '%' OR reportedName LIKE '%' || :query || '%' LIMIT 50")
+    suspend fun searchSpamSignatures(query: String): List<SpamSignatureEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertSignature(sig: SpamSignatureEntity)
 

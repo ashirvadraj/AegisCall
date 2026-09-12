@@ -5,9 +5,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.Dialpad
 import androidx.compose.material.icons.filled.Message
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -15,19 +15,25 @@ import androidx.compose.ui.Modifier
 enum class NavItem(val title: String) {
     DIALER("Dialer"),
     CALLS("Calls"),
+    LOOKUP("Lookup"),
     SMS("SMS"),
     SHIELD("Shield"),
-    ESCAPE("Escape"),
     SETTINGS("Settings")
 }
 
 @Composable
 fun MainNavigation() {
-    var currentItem by remember { mutableStateOf(NavItem.DIALER) }
+    var currentItem by remember { mutableStateOf(NavItem.LOOKUP) }
 
     Scaffold(
         bottomBar = {
             NavigationBar {
+                NavigationBarItem(
+                    icon = { Icon(Icons.Default.Search, contentDescription = "Lookup") },
+                    label = { Text("Lookup") },
+                    selected = currentItem == NavItem.LOOKUP,
+                    onClick = { currentItem = NavItem.LOOKUP }
+                )
                 NavigationBarItem(
                     icon = { Icon(Icons.Default.Dialpad, contentDescription = "Dialer") },
                     label = { Text("Dialer") },
@@ -53,12 +59,6 @@ fun MainNavigation() {
                     onClick = { currentItem = NavItem.SHIELD }
                 )
                 NavigationBarItem(
-                    icon = { Icon(Icons.Default.Timer, contentDescription = "Escape") },
-                    label = { Text("Escape") },
-                    selected = currentItem == NavItem.ESCAPE,
-                    onClick = { currentItem = NavItem.ESCAPE }
-                )
-                NavigationBarItem(
                     icon = { Icon(Icons.Default.Settings, contentDescription = "Settings") },
                     label = { Text("Settings") },
                     selected = currentItem == NavItem.SETTINGS,
@@ -69,11 +69,11 @@ fun MainNavigation() {
     ) { innerPadding ->
         Surface(modifier = Modifier.padding(innerPadding)) {
             when (currentItem) {
+                NavItem.LOOKUP -> LookupScreen()
                 NavItem.DIALER -> DialerScreen()
                 NavItem.CALLS -> CallHistoryScreen()
                 NavItem.SMS -> SmsInboxScreen()
                 NavItem.SHIELD -> SpamShieldScreen()
-                NavItem.ESCAPE -> FakeCallScreen()
                 NavItem.SETTINGS -> SettingsScreen()
             }
         }

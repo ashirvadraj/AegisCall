@@ -32,8 +32,10 @@ class AegisCallScreeningService : CallScreeningService() {
                     callerIdentity.riskLevel == SpamRiskLevel.HIGH_RISK_SPAM ||
                     callerIdentity.riskLevel == SpamRiskLevel.FRAUD_SCAM
 
+            // Announce who is calling via Voice TTS
+            CallerAnnouncer.announce(applicationContext, callerIdentity.displayName, isSpam)
+
             if (isSpam) {
-                // Drop and reject spam silently
                 val response = CallResponse.Builder()
                     .setDisallowCall(true)
                     .setRejectCall(true)
@@ -43,7 +45,6 @@ class AegisCallScreeningService : CallScreeningService() {
 
                 respondToCall(callDetails, response)
 
-                // Log as blocked spam
                 database.callLogDao().insertCallLog(
                     CallLogEntity(
                         phoneNumber = rawNumber,
@@ -55,14 +56,12 @@ class AegisCallScreeningService : CallScreeningService() {
                     )
                 )
 
-                // Notify user discreetly
                 NotificationHelper.showSpamBlockedNotification(
                     applicationContext,
                     rawNumber,
                     callerIdentity.category
                 )
             } else {
-                // Legitimate call: allow and start HUD overlay
                 val response = CallResponse.Builder()
                     .setDisallowCall(false)
                     .setRejectCall(false)
@@ -70,7 +69,6 @@ class AegisCallScreeningService : CallScreeningService() {
 
                 respondToCall(callDetails, response)
 
-                // Trigger Floating HUD Caller ID Overlay
                 val overlayIntent = Intent(applicationContext, CallOverlayService::class.java).apply {
                     putExtra("phone_number", rawNumber)
                     putExtra("display_name", callerIdentity.displayName)

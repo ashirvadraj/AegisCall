@@ -2,26 +2,26 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- Phone & Telecom Permissions -->
+    <!-- Essential Phone & Telecom Permissions -->
     <uses-permission android:name="android.permission.READ_PHONE_STATE" />
     <uses-permission android:name="android.permission.READ_CALL_LOG" />
     <uses-permission android:name="android.permission.WRITE_CALL_LOG" />
     <uses-permission android:name="android.permission.READ_CONTACTS" />
     <uses-permission android:name="android.permission.WRITE_CONTACTS" />
     <uses-permission android:name="android.permission.CALL_PHONE" />
-    <uses-permission android:name="android.permission.ANSWER_PHONE_CALLS" />
     <uses-permission android:name="android.permission.MANAGE_OWN_CALLS" />
 
-    <!-- SMS & OTP Permissions -->
-    <uses-permission android:name="android.permission.RECEIVE_SMS" />
-    <uses-permission android:name="android.permission.READ_SMS" />
-
-    <!-- Overlay & Notification Permissions -->
-    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <!-- Notifications & Vibration (Safe Permissions) -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_PHONE_CALL" tools:targetApi="34" />
+
+    <!-- Optional Floating Overlay (Only requested when user enables HUD in Settings) -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+
+    <!-- Optional SMS Auto-Copy (Only used if user opts in) -->
+    <uses-permission android:name="android.permission.RECEIVE_SMS" />
 
     <application
         android:name=".AegisCallApp"
@@ -54,7 +54,7 @@
             </intent-filter>
         </activity>
 
-        <!-- Android 10+ Native Call Screening Service -->
+        <!-- Official Android 10+ Native Call Screening Service (Google Recommended, zero financial warning) -->
         <service
             android:name=".service.AegisCallScreeningService"
             android:permission="android.permission.BIND_SCREEN_CALL_SERVICE"
@@ -64,7 +64,7 @@
             </intent-filter>
         </service>
 
-        <!-- Floating HUD Caller ID Overlay Service -->
+        <!-- Floating HUD Caller ID Overlay Service (Optional) -->
         <service
             android:name=".service.CallOverlayService"
             android:exported="false"

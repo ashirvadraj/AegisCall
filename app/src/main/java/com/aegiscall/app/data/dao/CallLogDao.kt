@@ -16,6 +16,15 @@ interface CallLogDao {
     @Query("SELECT * FROM call_logs WHERE callType = 'BLOCKED_SPAM' ORDER BY timestamp DESC")
     fun getBlockedCalls(): Flow<List<CallLogEntity>>
 
+    @Query("SELECT * FROM call_logs WHERE phoneNumber LIKE '%' || :query || '%' OR contactName LIKE '%' || :query || '%' ORDER BY timestamp DESC")
+    fun searchCallLogs(query: String): Flow<List<CallLogEntity>>
+
+    @Query("SELECT * FROM call_logs WHERE phoneNumber = :number ORDER BY timestamp DESC")
+    suspend fun getCallsForNumber(number: String): List<CallLogEntity>
+
+    @Query("SELECT * FROM call_logs WHERE contactName IS NULL OR contactName = 'Unknown Number' ORDER BY timestamp DESC LIMIT 20")
+    fun getRecentUnknownCalls(): Flow<List<CallLogEntity>>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertCallLog(callLog: CallLogEntity): Long
 
