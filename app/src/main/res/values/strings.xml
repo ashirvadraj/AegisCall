@@ -1,0 +1,8 @@
+<resources>
+    <string name="app_name">AegisCall</string>
+    <string name="spam_shield_active">Spam Shield Active</string>
+    <string name="auto_block_enabled">Auto-Block Enabled</string>
+    <string name="copy_otp">Copy OTP</string>
+    <string name="block_number">Block Number</string>
+    <string name="report_spam">Report Spam</string>
+</resources>
