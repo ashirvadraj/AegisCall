@@ -17,9 +17,10 @@ import kotlinx.coroutines.launch
         BlockedNumberEntity::class,
         SpamSignatureEntity::class,
         SmsMessageEntity::class,
-        CallNoteEntity::class
+        CallNoteEntity::class,
+        CachedCallerEntity::class
     ],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 abstract class AegisDatabase : RoomDatabase() {
@@ -28,6 +29,7 @@ abstract class AegisDatabase : RoomDatabase() {
     abstract fun spamSignatureDao(): SpamSignatureDao
     abstract fun smsDao(): SmsDao
     abstract fun callNoteDao(): CallNoteDao
+    abstract fun cachedCallerDao(): CachedCallerDao
 
     companion object {
         @Volatile
@@ -72,7 +74,6 @@ abstract class AegisDatabase : RoomDatabase() {
             )
             spamDao.insertSignatures(initialSpamList)
 
-            // Add default wildcard protection
             blockedDao.insertBlockedNumber(
                 BlockedNumberEntity(phoneNumberOrPattern = "+1900%", reason = "Block all 1-900 Premium Toll Scams", isWildcard = true)
             )

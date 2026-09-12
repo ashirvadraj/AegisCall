@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.aegiscall.app.data.AegisDatabase
 import com.aegiscall.app.data.entity.BlockedNumberEntity
+import com.aegiscall.app.data.entity.CachedCallerEntity
 import com.aegiscall.app.data.entity.SpamRiskLevel
 import com.aegiscall.app.engine.NumberLookupEngine
 import com.aegiscall.app.engine.SearchResultItem
@@ -51,19 +52,22 @@ fun LookupScreen() {
     var isSearching by remember { mutableStateOf(false) }
     var searchResults by remember { mutableStateOf<List<SearchResultItem>>(emptyList()) }
 
-    // Recent unknown calls from database
+    var editingNumber by remember { mutableStateOf<String?>(null) }
+    var customNameInput by remember { mutableStateOf("") }
+
     val recentUnknowns by database.callLogDao().getRecentUnknownCalls().collectAsState(initial = emptyList())
     val topSpammers by database.spamSignatureDao().getTopSpammers().collectAsState(initial = emptyList())
 
     fun performSearch(query: String) {
-        if (query.isBlank()) {
+        val trimmed = query.trim()
+        if (trimmed.isBlank()) {
             searchResults = emptyList()
             return
         }
         isSearching = true
         coroutineScope.launch {
             val results = withContext(Dispatchers.IO) {
-                lookupEngine.searchNumberOrName(query)
+                lookupEngine.searchNumberOrName(trimmed)
             }
             searchResults = results
             isSearching = false
@@ -75,28 +79,26 @@ fun LookupScreen() {
             .fillMaxSize()
             .padding(16.dp)
     ) {
-        // Top Header
-        Row(
-            verticalAlignment = Alignment.CenterVertically
-        ) {
+        // Header
+        Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Default.Search, contentDescription = "Lookup", tint = AegisBlue, modifier = Modifier.size(28.dp))
             Spacer(modifier = Modifier.width(8.dp))
             Column {
-                Text("Who Is Calling? / Number Lookup", fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                Text("Search by number or name to reveal caller identity", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Who Is Calling? / Reverse Caller ID", fontSize = 19.sp, fontWeight = FontWeight.Bold)
+                Text("Identifies any mobile number, carrier & circle live", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
 
         Spacer(modifier = Modifier.height(14.dp))
 
-        // Search Input Bar
+        // Search bar
         OutlinedTextField(
             value = searchQuery,
             onValueChange = {
                 searchQuery = it
                 performSearch(it)
             },
-            label = { Text("Enter number or name (e.g. +1800..., John, Amazon)") },
+            label = { Text("Search any number (e.g. 7808594583) or name") },
             singleLine = true,
             leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
             trailingIcon = {
@@ -114,7 +116,7 @@ fun LookupScreen() {
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        // Quick Search Action Chips
+        // Quick Search Chips
         LazyRow(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             modifier = Modifier.fillMaxWidth()
@@ -127,9 +129,9 @@ fun LookupScreen() {
                         if (!clip.isNullOrBlank()) {
                             searchQuery = clip
                             performSearch(clip)
-                            Toast.makeText(context, "Pasted from clipboard: $clip", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, "Pasted: $clip", Toast.LENGTH_SHORT).show()
                         } else {
-                            Toast.makeText(context, "Clipboard is empty", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, "Clipboard empty", Toast.LENGTH_SHORT).show()
                         }
                     },
                     label = { Text("?? Paste Clipboard") }
@@ -139,20 +141,20 @@ fun LookupScreen() {
             item {
                 SuggestionChip(
                     onClick = {
-                        CallerAnnouncer.announce(context, "Alex from Logistics", false)
-                        Toast.makeText(context, "Voice Announcer Playing...", Toast.LENGTH_SHORT).show()
+                        searchQuery = "7808594583"
+                        performSearch("7808594583")
                     },
-                    label = { Text("?? Test Voice Announce") }
+                    label = { Text("? Test 7808594583") }
                 )
             }
 
             item {
                 SuggestionChip(
                     onClick = {
-                        searchQuery = "Telemarketing"
-                        performSearch("Telemarketing")
+                        CallerAnnouncer.announce(context, "Airtel Subscriber (Bihar)", false)
+                        Toast.makeText(context, "Playing Announcement...", Toast.LENGTH_SHORT).show()
                     },
-                    label = { Text("?? Spam Numbers") }
+                    label = { Text("?? Announce Demo") }
                 )
             }
         }
@@ -164,7 +166,6 @@ fun LookupScreen() {
                 CircularProgressIndicator(color = AegisBlue)
             }
         } else if (searchQuery.isNotEmpty()) {
-            // Search Results List
             if (searchResults.isEmpty()) {
                 Box(
                     modifier = Modifier.fillMaxSize().padding(top = 40.dp),
@@ -173,15 +174,15 @@ fun LookupScreen() {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Icon(Icons.Default.PersonSearch, contentDescription = null, modifier = Modifier.size(64.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                         Spacer(modifier = Modifier.height(8.dp))
-                        Text("No matching caller found for '$searchQuery'", fontWeight = FontWeight.SemiBold)
-                        Text("Try entering the complete phone number with country code.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("No match found for '$searchQuery'", fontWeight = FontWeight.SemiBold)
+                        Text("Ensure the phone number includes valid digits.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             } else {
-                Text("Search Results (${searchResults.size})", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                Text("Identified Caller Result (${searchResults.size})", fontSize = 16.sp, fontWeight = FontWeight.Bold)
                 Spacer(modifier = Modifier.height(8.dp))
 
-                LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     items(searchResults) { item ->
                         SearchResultCard(
                             item = item,
@@ -192,7 +193,7 @@ fun LookupScreen() {
                                 try { context.startActivity(intent) } catch (e: Exception) {}
                             },
                             onWhatsApp = { num ->
-                                val clean = num.replace("[^0-9]".toRegex(), "")
+                                val clean = if (num.startsWith("+")) num.substring(1) else if (num.length == 10) "91$num" else num
                                 val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://wa.me/$clean")).apply {
                                     flags = Intent.FLAG_ACTIVITY_NEW_TASK
                                 }
@@ -208,18 +209,22 @@ fun LookupScreen() {
                             },
                             onAnnounce = { name, isSpam ->
                                 CallerAnnouncer.announce(context, name, isSpam)
+                            },
+                            onEditName = { num, currentName ->
+                                editingNumber = num
+                                customNameInput = currentName
                             }
                         )
                     }
                 }
             }
         } else {
-            // Default view: Recent Unknown Callers & Top Spammers
+            // Default view: Recent Unknown Callers & Directory
             LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 item {
                     Text("Recent Unknown Numbers Who Called You", fontSize = 16.sp, fontWeight = FontWeight.Bold)
                     Spacer(modifier = Modifier.height(4.dp))
-                    Text("Tap any number to run reverse caller lookup", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("Tap to run instant reverse caller lookup", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
 
                 if (recentUnknowns.isEmpty()) {
@@ -255,7 +260,7 @@ fun LookupScreen() {
                                         Text("Tap to reveal identity", fontSize = 11.sp, color = AegisBlue)
                                     }
                                 }
-                                Icon(Icons.Default.ArrowForwardIos, contentDescription = "Inspect", modifier = Modifier.size(16.dp))
+                                Icon(Icons.Default.ArrowForward, contentDescription = "Inspect", modifier = Modifier.size(16.dp))
                             }
                         }
                     }
@@ -295,6 +300,52 @@ fun LookupScreen() {
             }
         }
     }
+
+    // Dialog to save custom caller name
+    if (editingNumber != null) {
+        AlertDialog(
+            onDismissRequest = { editingNumber = null },
+            title = { Text("Label / Edit Caller Name") },
+            text = {
+                Column {
+                    Text("Assign a verified name to $editingNumber:", fontSize = 13.sp)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = customNameInput,
+                        onValueChange = { customNameInput = it },
+                        label = { Text("Caller Name") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    val num = editingNumber ?: return@Button
+                    val newName = customNameInput.trim()
+                    if (newName.isNotEmpty()) {
+                        coroutineScope.launch {
+                            database.cachedCallerDao().insertCachedCaller(
+                                CachedCallerEntity(
+                                    phoneNumber = num,
+                                    resolvedName = newName,
+                                    carrier = "Custom Tagged",
+                                    circleOrCity = "User Labeled",
+                                    isVerified = true
+                                )
+                            )
+                            performSearch(num)
+                            editingNumber = null
+                            Toast.makeText(context, "Saved name: $newName", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                }) { Text("Save") }
+            },
+            dismissButton = {
+                TextButton(onClick = { editingNumber = null }) { Text("Cancel") }
+            }
+        )
+    }
 }
 
 @Composable
@@ -303,7 +354,8 @@ fun SearchResultCard(
     onCall: (String) -> Unit,
     onWhatsApp: (String) -> Unit,
     onBlock: (String) -> Unit,
-    onAnnounce: (String, Boolean) -> Unit
+    onAnnounce: (String, Boolean) -> Unit,
+    onEditName: (String, String) -> Unit
 ) {
     val isSpam = item.riskLevel == SpamRiskLevel.HIGH_RISK_SPAM || item.riskLevel == SpamRiskLevel.FRAUD_SCAM
     val badgeColor = when (item.riskLevel) {
@@ -314,12 +366,13 @@ fun SearchResultCard(
 
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(12.dp),
+        shape = RoundedCornerShape(14.dp),
         colors = CardDefaults.cardColors(
             containerColor = if (isSpam) AegisDangerRed.copy(alpha = 0.08f) else MaterialTheme.colorScheme.surfaceVariant
         )
     ) {
         Column(modifier = Modifier.padding(14.dp)) {
+            // Header with Initial Avatar and Name
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -327,19 +380,28 @@ fun SearchResultCard(
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(
-                        modifier = Modifier.size(44.dp).clip(CircleShape).background(badgeColor.copy(alpha = 0.2f)),
+                        modifier = Modifier.size(48.dp).clip(CircleShape).background(badgeColor.copy(alpha = 0.2f)),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
                             text = item.displayName.take(1).uppercase(),
                             fontWeight = FontWeight.Bold,
-                            fontSize = 18.sp,
+                            fontSize = 20.sp,
                             color = badgeColor
                         )
                     }
                     Spacer(modifier = Modifier.width(12.dp))
                     Column {
-                        Text(item.displayName, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(item.displayName, fontWeight = FontWeight.Bold, fontSize = 17.sp)
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Icon(
+                                Icons.Default.Edit,
+                                contentDescription = "Edit Name",
+                                modifier = Modifier.size(16.dp).clickable { onEditName(item.phoneNumber, item.displayName) },
+                                tint = AegisBlue
+                            )
+                        }
                         Text(item.phoneNumber, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
@@ -349,56 +411,77 @@ fun SearchResultCard(
                     shape = RoundedCornerShape(8.dp)
                 ) {
                     Text(
-                        text = if (isSpam) "?? SPAM" else "SAFE",
+                        text = if (isSpam) "?? SPAM" else "? VERIFIED",
                         color = badgeColor,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
-
-            // Details info
-            Text(
-                text = "Category: ${item.category} ? ${item.cityOrCarrier}",
-                fontSize = 12.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-
-            if (item.callCount > 0) {
-                Text(
-                    text = "Interaction History: Called you ${item.callCount} times",
-                    fontSize = 12.sp,
-                    color = AegisBlue,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.padding(top = 2.dp)
-                )
-            }
-
             Spacer(modifier = Modifier.height(10.dp))
 
-            // Action buttons row
+            // Telecom & Carrier Identification info
+            Card(
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.5f)),
+                shape = RoundedCornerShape(8.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(10.dp)) {
+                    Text("?? Operator: ${item.cityOrCarrier}", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                    Text("?? Source: ${item.matchSource}", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (item.callCount > 0) {
+                        Text("?? History: Called you ${item.callCount} times", fontSize = 11.sp, color = AegisBlue, fontWeight = FontWeight.SemiBold)
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Prominent Action Buttons
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                IconButton(onClick = { onCall(item.phoneNumber) }) {
-                    Icon(Icons.Default.Call, contentDescription = "Call", tint = AegisShieldGreen)
+                // WhatsApp Profile & Chat Button
+                Button(
+                    onClick = { onWhatsApp(item.phoneNumber) },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF25D366)),
+                    modifier = Modifier.weight(1f),
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
+                ) {
+                    Icon(Icons.Default.Chat, contentDescription = "WhatsApp", modifier = Modifier.size(16.dp), tint = Color.White)
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("WhatsApp DP & Name", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
                 }
 
-                IconButton(onClick = { onWhatsApp(item.phoneNumber) }) {
-                    Icon(Icons.Default.Chat, contentDescription = "WhatsApp", tint = Color(0xFF25D366))
+                // Call Button
+                Button(
+                    onClick = { onCall(item.phoneNumber) },
+                    colors = ButtonDefaults.buttonColors(containerColor = AegisShieldGreen),
+                    modifier = Modifier.weight(0.6f),
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
+                ) {
+                    Icon(Icons.Default.Call, contentDescription = "Call", modifier = Modifier.size(16.dp), tint = Color.White)
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Call", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
                 }
 
-                IconButton(onClick = { onAnnounce(item.displayName, isSpam) }) {
-                    Icon(Icons.Default.VolumeUp, contentDescription = "Announce Name", tint = AegisBlue)
+                // Voice Announce Button
+                IconButton(
+                    onClick = { onAnnounce(item.displayName, isSpam) },
+                    modifier = Modifier.size(36.dp).clip(CircleShape).background(AegisBlue.copy(alpha = 0.15f))
+                ) {
+                    Icon(Icons.Default.VolumeUp, contentDescription = "Speak", tint = AegisBlue, modifier = Modifier.size(18.dp))
                 }
 
-                IconButton(onClick = { onBlock(item.phoneNumber) }) {
-                    Icon(Icons.Default.Shield, contentDescription = "Block", tint = AegisDangerRed)
+                // Block Button
+                IconButton(
+                    onClick = { onBlock(item.phoneNumber) },
+                    modifier = Modifier.size(36.dp).clip(CircleShape).background(AegisDangerRed.copy(alpha = 0.15f))
+                ) {
+                    Icon(Icons.Default.Shield, contentDescription = "Block", tint = AegisDangerRed, modifier = Modifier.size(18.dp))
                 }
             }
         }

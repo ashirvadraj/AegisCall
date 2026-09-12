@@ -1,7 +1,6 @@
 package com.aegiscall.app.engine
 
 import android.content.Context
-import android.database.Cursor
 import android.net.Uri
 import android.provider.ContactsContract
 import com.aegiscall.app.data.AegisDatabase
@@ -32,6 +31,7 @@ data class SearchResultItem(
 
 class NumberLookupEngine(private val context: Context) {
     private val database = AegisDatabase.getDatabase(context)
+    private val cloudLookup = CloudLookupEngine(context)
 
     suspend fun resolveCaller(phoneNumber: String): CallerIdentity {
         val cleanNumber = phoneNumber.replace("[^0-9+]".toRegex(), "")
@@ -69,16 +69,16 @@ class NumberLookupEngine(private val context: Context) {
             )
         }
 
-        // 3. Fallback to heuristic rule analysis
-        val heuristicRisk = SpamClassifierEngine.analyzePhoneNumber(cleanNumber)
+        // 3. Cloud & Telecom Directory Lookup (Never returns raw "Unknown" for valid numbers)
+        val cloudInfo = cloudLookup.lookupNumber(cleanNumber)
         return CallerIdentity(
             phoneNumber = cleanNumber,
-            displayName = if (heuristicRisk.spamScore > 70) "Suspicious Caller" else "Unknown Number",
+            displayName = cloudInfo.displayName,
             isContact = false,
-            spamScore = heuristicRisk.spamScore,
-            riskLevel = heuristicRisk.riskLevel,
-            category = heuristicRisk.category,
-            cityOrCarrier = heuristicRisk.locationOrCarrier
+            spamScore = cloudInfo.spamScore,
+            riskLevel = cloudInfo.riskLevel,
+            category = cloudInfo.lineType,
+            cityOrCarrier = "${cloudInfo.carrier} ? ${cloudInfo.circleOrCity}"
         )
     }
 
@@ -145,19 +145,38 @@ class NumberLookupEngine(private val context: Context) {
             }
         } catch (e: Exception) {}
 
-        // C. If query has digits (potential phone number lookup), perform reverse heuristic check
+        // C. Check Cached Callers
+        try {
+            val cachedList = database.cachedCallerDao().searchCached(trimmed)
+            for (cached in cachedList) {
+                if (!results.containsKey(cached.phoneNumber)) {
+                    results[cached.phoneNumber] = SearchResultItem(
+                        phoneNumber = cached.phoneNumber,
+                        displayName = cached.resolvedName,
+                        isContact = false,
+                        spamScore = cached.spamScore,
+                        riskLevel = if (cached.spamScore > 60) SpamRiskLevel.HIGH_RISK_SPAM else SpamRiskLevel.SAFE,
+                        category = "Telecom Subscriber",
+                        cityOrCarrier = "${cached.carrier} ? ${cached.circleOrCity}",
+                        matchSource = "Verified Cache"
+                    )
+                }
+            }
+        } catch (e: Exception) {}
+
+        // D. Cloud & Telecom Lookup on any searched digits (e.g. 7808594583)
         val digitsOnly = trimmed.replace("[^0-9+]".toRegex(), "")
         if (digitsOnly.length >= 4 && !results.containsKey(digitsOnly)) {
-            val identity = resolveCaller(digitsOnly)
+            val cloudInfo = cloudLookup.lookupNumber(digitsOnly)
             results[digitsOnly] = SearchResultItem(
                 phoneNumber = digitsOnly,
-                displayName = identity.displayName,
-                isContact = identity.isContact,
-                spamScore = identity.spamScore,
-                riskLevel = identity.riskLevel,
-                category = identity.category,
-                cityOrCarrier = identity.cityOrCarrier,
-                matchSource = if (identity.isContact) "Contacts" else "Heuristic Reverse Lookup"
+                displayName = cloudInfo.displayName,
+                isContact = false,
+                spamScore = cloudInfo.spamScore,
+                riskLevel = cloudInfo.riskLevel,
+                category = cloudInfo.lineType,
+                cityOrCarrier = "${cloudInfo.carrier} ? ${cloudInfo.circleOrCity}",
+                matchSource = cloudInfo.source
             )
         }
 
