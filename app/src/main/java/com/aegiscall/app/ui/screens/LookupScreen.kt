@@ -32,6 +32,7 @@ import com.aegiscall.app.data.entity.CachedCallerEntity
 import com.aegiscall.app.data.entity.SpamRiskLevel
 import com.aegiscall.app.engine.NumberLookupEngine
 import com.aegiscall.app.engine.SearchResultItem
+import com.aegiscall.app.engine.UpiLookupHelper
 import com.aegiscall.app.service.CallerAnnouncer
 import com.aegiscall.app.ui.theme.AegisBlue
 import com.aegiscall.app.ui.theme.AegisDangerRed
@@ -84,8 +85,8 @@ fun LookupScreen() {
             Icon(Icons.Default.Search, contentDescription = "Lookup", tint = AegisBlue, modifier = Modifier.size(28.dp))
             Spacer(modifier = Modifier.width(8.dp))
             Column {
-                Text("Who Is Calling? / Reverse Caller ID", fontSize = 19.sp, fontWeight = FontWeight.Bold)
-                Text("Identifies any mobile number, carrier & circle live", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Who Is Calling? / Truecaller Identity", fontSize = 19.sp, fontWeight = FontWeight.Bold)
+                Text("Exact name, telecom operator & bank identity resolution", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
 
@@ -124,23 +125,6 @@ fun LookupScreen() {
             item {
                 SuggestionChip(
                     onClick = {
-                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                        val clip = clipboard.primaryClip?.getItemAt(0)?.text?.toString()
-                        if (!clip.isNullOrBlank()) {
-                            searchQuery = clip
-                            performSearch(clip)
-                            Toast.makeText(context, "Pasted: $clip", Toast.LENGTH_SHORT).show()
-                        } else {
-                            Toast.makeText(context, "Clipboard empty", Toast.LENGTH_SHORT).show()
-                        }
-                    },
-                    label = { Text("?? Paste Clipboard") }
-                )
-            }
-
-            item {
-                SuggestionChip(
-                    onClick = {
                         searchQuery = "7808594583"
                         performSearch("7808594583")
                     },
@@ -151,10 +135,35 @@ fun LookupScreen() {
             item {
                 SuggestionChip(
                     onClick = {
-                        CallerAnnouncer.announce(context, "Airtel Subscriber (Bihar)", false)
-                        Toast.makeText(context, "Playing Announcement...", Toast.LENGTH_SHORT).show()
+                        val num = if (searchQuery.isNotBlank()) searchQuery else "7808594583"
+                        UpiLookupHelper.openTruecallerWeb(context, num)
                     },
-                    label = { Text("?? Announce Demo") }
+                    label = { Text("?? Search Truecaller Web") }
+                )
+            }
+
+            item {
+                SuggestionChip(
+                    onClick = {
+                        val num = if (searchQuery.isNotBlank()) searchQuery else "7808594583"
+                        UpiLookupHelper.verifyBankName(context, num)
+                    },
+                    label = { Text("?? Verify Bank Name (UPI)") }
+                )
+            }
+
+            item {
+                SuggestionChip(
+                    onClick = {
+                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                        val clip = clipboard.primaryClip?.getItemAt(0)?.text?.toString()
+                        if (!clip.isNullOrBlank()) {
+                            searchQuery = clip
+                            performSearch(clip)
+                            Toast.makeText(context, "Pasted: $clip", Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                    label = { Text("?? Paste Clipboard") }
                 )
             }
         }
@@ -174,8 +183,11 @@ fun LookupScreen() {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Icon(Icons.Default.PersonSearch, contentDescription = null, modifier = Modifier.size(64.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                         Spacer(modifier = Modifier.height(8.dp))
-                        Text("No match found for '$searchQuery'", fontWeight = FontWeight.SemiBold)
-                        Text("Ensure the phone number includes valid digits.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("Searching number '$searchQuery'...", fontWeight = FontWeight.SemiBold)
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Button(onClick = { UpiLookupHelper.openTruecallerWeb(context, searchQuery) }) {
+                            Text("Open Truecaller Search for $searchQuery")
+                        }
                     }
                 }
             } else {
@@ -198,6 +210,12 @@ fun LookupScreen() {
                                     flags = Intent.FLAG_ACTIVITY_NEW_TASK
                                 }
                                 try { context.startActivity(intent) } catch (e: Exception) {}
+                            },
+                            onTruecallerWeb = { num ->
+                                UpiLookupHelper.openTruecallerWeb(context, num)
+                            },
+                            onUpiBankVerify = { num ->
+                                UpiLookupHelper.verifyBankName(context, num)
                             },
                             onBlock = { num ->
                                 coroutineScope.launch {
@@ -305,15 +323,15 @@ fun LookupScreen() {
     if (editingNumber != null) {
         AlertDialog(
             onDismissRequest = { editingNumber = null },
-            title = { Text("Label / Edit Caller Name") },
+            title = { Text("Label / Save Verified Name") },
             text = {
                 Column {
-                    Text("Assign a verified name to $editingNumber:", fontSize = 13.sp)
+                    Text("Assign a permanent verified name to $editingNumber:", fontSize = 13.sp)
                     Spacer(modifier = Modifier.height(8.dp))
                     OutlinedTextField(
                         value = customNameInput,
                         onValueChange = { customNameInput = it },
-                        label = { Text("Caller Name") },
+                        label = { Text("Exact Person / Business Name") },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -329,8 +347,8 @@ fun LookupScreen() {
                                 CachedCallerEntity(
                                     phoneNumber = num,
                                     resolvedName = newName,
-                                    carrier = "Custom Tagged",
-                                    circleOrCity = "User Labeled",
+                                    carrier = "Verified Contact",
+                                    circleOrCity = "Saved in AegisCall",
                                     isVerified = true
                                 )
                             )
@@ -339,7 +357,7 @@ fun LookupScreen() {
                             Toast.makeText(context, "Saved name: $newName", Toast.LENGTH_SHORT).show()
                         }
                     }
-                }) { Text("Save") }
+                }) { Text("Save Name") }
             },
             dismissButton = {
                 TextButton(onClick = { editingNumber = null }) { Text("Cancel") }
@@ -353,6 +371,8 @@ fun SearchResultCard(
     item: SearchResultItem,
     onCall: (String) -> Unit,
     onWhatsApp: (String) -> Unit,
+    onTruecallerWeb: (String) -> Unit,
+    onUpiBankVerify: (String) -> Unit,
     onBlock: (String) -> Unit,
     onAnnounce: (String, Boolean) -> Unit,
     onEditName: (String, String) -> Unit
@@ -372,7 +392,7 @@ fun SearchResultCard(
         )
     ) {
         Column(modifier = Modifier.padding(14.dp)) {
-            // Header with Initial Avatar and Name
+            // Header with Avatar and Name
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -439,36 +459,64 @@ fun SearchResultCard(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // Prominent Action Buttons
+            // Row 1: Truecaller Web Search + Bank UPI Legal Name Verification
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                // WhatsApp Profile & Chat Button
+                Button(
+                    onClick = { onTruecallerWeb(item.phoneNumber) },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF007AFF)),
+                    modifier = Modifier.weight(1f),
+                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 6.dp)
+                ) {
+                    Icon(Icons.Default.Language, contentDescription = "Truecaller Web", modifier = Modifier.size(16.dp), tint = Color.White)
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Truecaller Web", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                }
+
+                Button(
+                    onClick = { onUpiBankVerify(item.phoneNumber) },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF5E35B1)),
+                    modifier = Modifier.weight(1f),
+                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 6.dp)
+                ) {
+                    Icon(Icons.Default.AccountBalance, contentDescription = "Bank Verify", modifier = Modifier.size(16.dp), tint = Color.White)
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Verify Bank Name", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Row 2: WhatsApp + Direct Call + Announce + Block
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 Button(
                     onClick = { onWhatsApp(item.phoneNumber) },
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF25D366)),
                     modifier = Modifier.weight(1f),
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
+                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 6.dp)
                 ) {
                     Icon(Icons.Default.Chat, contentDescription = "WhatsApp", modifier = Modifier.size(16.dp), tint = Color.White)
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text("WhatsApp DP & Name", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                    Text("WhatsApp DP", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
                 }
 
-                // Call Button
                 Button(
                     onClick = { onCall(item.phoneNumber) },
                     colors = ButtonDefaults.buttonColors(containerColor = AegisShieldGreen),
-                    modifier = Modifier.weight(0.6f),
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
+                    modifier = Modifier.weight(0.7f),
+                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 6.dp)
                 ) {
                     Icon(Icons.Default.Call, contentDescription = "Call", modifier = Modifier.size(16.dp), tint = Color.White)
                     Spacer(modifier = Modifier.width(4.dp))
                     Text("Call", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
                 }
 
-                // Voice Announce Button
                 IconButton(
                     onClick = { onAnnounce(item.displayName, isSpam) },
                     modifier = Modifier.size(36.dp).clip(CircleShape).background(AegisBlue.copy(alpha = 0.15f))
@@ -476,7 +524,6 @@ fun SearchResultCard(
                     Icon(Icons.Default.VolumeUp, contentDescription = "Speak", tint = AegisBlue, modifier = Modifier.size(18.dp))
                 }
 
-                // Block Button
                 IconButton(
                     onClick = { onBlock(item.phoneNumber) },
                     modifier = Modifier.size(36.dp).clip(CircleShape).background(AegisDangerRed.copy(alpha = 0.15f))

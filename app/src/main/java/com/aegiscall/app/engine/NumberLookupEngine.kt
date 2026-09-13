@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.Uri
 import android.provider.ContactsContract
 import com.aegiscall.app.data.AegisDatabase
+import com.aegiscall.app.data.entity.CachedCallerEntity
 import com.aegiscall.app.data.entity.SpamRiskLevel
 
 data class CallerIdentity(
@@ -50,7 +51,51 @@ class NumberLookupEngine(private val context: Context) {
             )
         }
 
-        // 2. Check offline spam signatures
+        // 2. Check cached callers database
+        val cached = database.cachedCallerDao().getCachedCaller(cleanNumber)
+        if (cached != null) {
+            return CallerIdentity(
+                phoneNumber = cleanNumber,
+                displayName = cached.resolvedName,
+                isContact = false,
+                spamScore = cached.spamScore,
+                riskLevel = if (cached.spamScore >= 70) SpamRiskLevel.HIGH_RISK_SPAM else SpamRiskLevel.SAFE,
+                category = "Verified Subscriber",
+                cityOrCarrier = "${cached.carrier} ? ${cached.circleOrCity}"
+            )
+        }
+
+        // 3. Query Truecaller Cloud API (if user token is configured)
+        val truecallerProfile = TruecallerLookupClient.queryTruecaller(context, cleanNumber)
+        if (truecallerProfile != null && !truecallerProfile.name.isNullOrBlank()) {
+            val carrierStr = truecallerProfile.carrier ?: "Cellular"
+            val cityStr = truecallerProfile.city ?: "India"
+            // Cache it
+            try {
+                database.cachedCallerDao().insertCachedCaller(
+                    CachedCallerEntity(
+                        phoneNumber = cleanNumber,
+                        resolvedName = truecallerProfile.name,
+                        carrier = carrierStr,
+                        circleOrCity = cityStr,
+                        spamScore = truecallerProfile.spamScore,
+                        isVerified = truecallerProfile.isVerified
+                    )
+                )
+            } catch (e: Exception) {}
+
+            return CallerIdentity(
+                phoneNumber = cleanNumber,
+                displayName = truecallerProfile.name,
+                isContact = false,
+                spamScore = truecallerProfile.spamScore,
+                riskLevel = if (truecallerProfile.isSpam) SpamRiskLevel.HIGH_RISK_SPAM else SpamRiskLevel.SAFE,
+                category = if (truecallerProfile.isVerified) "Verified Truecaller Profile" else "Identified Caller",
+                cityOrCarrier = "$carrierStr ? $cityStr"
+            )
+        }
+
+        // 4. Check offline spam signatures
         val signature = database.spamSignatureDao().findSignature(cleanNumber)
         if (signature != null) {
             return CallerIdentity(
@@ -69,7 +114,7 @@ class NumberLookupEngine(private val context: Context) {
             )
         }
 
-        // 3. Cloud & Telecom Directory Lookup (Never returns raw "Unknown" for valid numbers)
+        // 5. Cloud & Telecom Directory Lookup
         val cloudInfo = cloudLookup.lookupNumber(cleanNumber)
         return CallerIdentity(
             phoneNumber = cleanNumber,
@@ -121,7 +166,26 @@ class NumberLookupEngine(private val context: Context) {
             }
         } catch (e: Exception) {}
 
-        // B. Search spam database by name or number
+        // B. Search Cached Callers
+        try {
+            val cachedList = database.cachedCallerDao().searchCached(trimmed)
+            for (cached in cachedList) {
+                if (!results.containsKey(cached.phoneNumber)) {
+                    results[cached.phoneNumber] = SearchResultItem(
+                        phoneNumber = cached.phoneNumber,
+                        displayName = cached.resolvedName,
+                        isContact = false,
+                        spamScore = cached.spamScore,
+                        riskLevel = if (cached.spamScore > 60) SpamRiskLevel.HIGH_RISK_SPAM else SpamRiskLevel.SAFE,
+                        category = "Telecom Subscriber",
+                        cityOrCarrier = "${cached.carrier} ? ${cached.circleOrCity}",
+                        matchSource = "Verified Cache"
+                    )
+                }
+            }
+        } catch (e: Exception) {}
+
+        // C. Search spam database
         try {
             val spamMatches = database.spamSignatureDao().searchSpamSignatures(trimmed)
             for (sig in spamMatches) {
@@ -145,42 +209,23 @@ class NumberLookupEngine(private val context: Context) {
             }
         } catch (e: Exception) {}
 
-        // C. Check Cached Callers
-        try {
-            val cachedList = database.cachedCallerDao().searchCached(trimmed)
-            for (cached in cachedList) {
-                if (!results.containsKey(cached.phoneNumber)) {
-                    results[cached.phoneNumber] = SearchResultItem(
-                        phoneNumber = cached.phoneNumber,
-                        displayName = cached.resolvedName,
-                        isContact = false,
-                        spamScore = cached.spamScore,
-                        riskLevel = if (cached.spamScore > 60) SpamRiskLevel.HIGH_RISK_SPAM else SpamRiskLevel.SAFE,
-                        category = "Telecom Subscriber",
-                        cityOrCarrier = "${cached.carrier} ? ${cached.circleOrCity}",
-                        matchSource = "Verified Cache"
-                    )
-                }
-            }
-        } catch (e: Exception) {}
-
-        // D. Cloud & Telecom Lookup on any searched digits (e.g. 7808594583)
+        // D. Resolve any searched digits via Truecaller / Telecom / Cloud
         val digitsOnly = trimmed.replace("[^0-9+]".toRegex(), "")
         if (digitsOnly.length >= 4 && !results.containsKey(digitsOnly)) {
-            val cloudInfo = cloudLookup.lookupNumber(digitsOnly)
+            val callerId = resolveCaller(digitsOnly)
             results[digitsOnly] = SearchResultItem(
                 phoneNumber = digitsOnly,
-                displayName = cloudInfo.displayName,
-                isContact = false,
-                spamScore = cloudInfo.spamScore,
-                riskLevel = cloudInfo.riskLevel,
-                category = cloudInfo.lineType,
-                cityOrCarrier = "${cloudInfo.carrier} ? ${cloudInfo.circleOrCity}",
-                matchSource = cloudInfo.source
+                displayName = callerId.displayName,
+                isContact = callerId.isContact,
+                spamScore = callerId.spamScore,
+                riskLevel = callerId.riskLevel,
+                category = callerId.category,
+                cityOrCarrier = callerId.cityOrCarrier,
+                matchSource = if (callerId.isContact) "Contacts" else "Live Caller ID Resolution"
             )
         }
 
-        // Enrich results with call history counts
+        // Enrich results with call history
         val enrichedList = mutableListOf<SearchResultItem>()
         for (item in results.values) {
             val callLogs = database.callLogDao().getCallsForNumber(item.phoneNumber)
